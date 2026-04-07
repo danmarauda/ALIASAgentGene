@@ -1,0 +1,16 @@
+# app/ — populated by install.js, never committed
+app/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environment files (may contain API keys)
+.env
+*.env
+
+# OS
+.DS_Store
+Thumbs.db
