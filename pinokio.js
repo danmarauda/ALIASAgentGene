@@ -10,7 +10,7 @@ module.exports = {
       start:   info.running("start.js"),
       update:  info.running("update.js"),
       reset:   info.running("reset.js"),
-      setup:   info.running("setup.js"),
+      setup:   info.running("configure.js"),
     }
 
     if (running.install) {
@@ -78,7 +78,7 @@ module.exports = {
         default: true,
         icon: "fa-solid fa-key",
         text: "Setup",
-        href: "setup.js",
+        href: "configure.js",
       }]
     }
 
@@ -91,7 +91,7 @@ module.exports = {
     }, {
       icon: "fa-solid fa-key",
       text: "Setup",
-      href: "setup.js",
+      href: "configure.js",
     }, {
       icon: "fa-solid fa-arrows-rotate",
       text: "Update",
