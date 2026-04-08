@@ -54,6 +54,56 @@ async function saveModel(modelId, ondata) {
   ondata({ raw: `Set default model to ${modelId.trim()}\r\n` })
 }
 
+function parseSimpleYaml(text) {
+  const result = {}
+  let currentObj = null
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.trim() || line.trim().startsWith('#')) continue
+    if (!line.startsWith(' ')) {
+      const m = line.match(/^([\w-]+)\s*:\s*(.*)$/)
+      if (m) {
+        const val = m[2].replace(/^["']|["']$/g, '').trim()
+        if (val) { result[m[1]] = val; currentObj = null }
+        else { result[m[1]] = {}; currentObj = result[m[1]] }
+      }
+    } else if (currentObj !== null) {
+      const m = line.match(/^\s+([\w-]+)\s*:\s*(.*)$/)
+      if (m) currentObj[m[1]] = m[2].replace(/^["']|["']$/g, '').trim()
+    }
+  }
+  return result
+}
+
+function serializeSimpleYaml(obj) {
+  const lines = []
+  for (const [k, v] of Object.entries(obj)) {
+    if (typeof v === 'object' && v !== null) {
+      lines.push(`${k}:`)
+      for (const [nk, nv] of Object.entries(v)) {
+        if (typeof nv === 'string' && nv) lines.push(`  ${nk}: "${nv}"`)
+      }
+    } else if (typeof v === 'string' && v) {
+      lines.push(`${k}: "${v}"`)
+    }
+  }
+  return lines.join('\n') + '\n'
+}
+
+async function saveToConfigYaml(modelSection, ondata) {
+  const hermesDir = path.join(os.homedir(), '.hermes')
+  const yamlPath = path.join(hermesDir, 'config.yaml')
+  await fs.promises.mkdir(hermesDir, { recursive: true })
+
+  let existing = {}
+  try { existing = parseSimpleYaml(await fs.promises.readFile(yamlPath, 'utf8')) } catch (_) {}
+
+  const prevModel = (typeof existing.model === 'object' && existing.model) ? existing.model : {}
+  existing.model = { ...prevModel, ...modelSection }
+
+  await fs.promises.writeFile(yamlPath, serializeSimpleYaml(existing), 'utf8')
+  ondata({ raw: `Saved local model config to ${yamlPath}\r\n` })
+}
+
 module.exports = {
   run: [
     {
@@ -70,6 +120,14 @@ module.exports = {
             await fs.promises.readFile(path.join(os.homedir(), '.hermes', 'webui', 'settings.json'), 'utf8')
           )
           if (settings.default_model) existing._current_model = settings.default_model
+        } catch (_) {}
+
+        try {
+          const yamlText = await fs.promises.readFile(path.join(os.homedir(), '.hermes', 'config.yaml'), 'utf8')
+          const cfg = parseSimpleYaml(yamlText)
+          if (cfg.model && typeof cfg.model === 'object' && cfg.model.base_url) {
+            existing._current_base_url = cfg.model.base_url
+          }
         } catch (_) {}
 
         return existing
@@ -96,7 +154,9 @@ module.exports = {
               { text: 'Anthropic', value: 'anthropic' },
               { text: 'OpenRouter', value: 'openrouter' },
               { text: 'Google Gemini', value: 'google' },
-              { text: 'DeepSeek', value: 'deepseek' }
+              { text: 'DeepSeek', value: 'deepseek' },
+              { text: 'LM Studio (local)', value: 'lmstudio' },
+              { text: 'Ollama (local)', value: 'ollama' }
             ]
           }
         ]
@@ -256,6 +316,74 @@ module.exports = {
       method: async (req, ondata) => {
         await saveToEnv(req.input, ondata)
         await saveModel(req.input.model, ondata)
+      }
+    },
+
+    {
+      when: "{{local.provider === 'lmstudio'}}",
+      method: 'input',
+      params: {
+        title: 'LM Studio - Local Model Server',
+        description: 'Hermes will auto-detect models from your running LM Studio server. Start LM Studio and load a model before chatting.',
+        form: [
+          {
+            key: 'base_url',
+            type: 'text',
+            title: "LM Studio API URL (current: {{local.existing._current_base_url || 'not set'}})",
+            placeholder: 'http://127.0.0.1:1234/v1',
+            default: "{{local.existing._current_base_url || 'http://127.0.0.1:1234/v1'}}"
+          },
+          {
+            key: 'model',
+            type: 'text',
+            title: 'Default Model ID (optional — leave blank to auto-detect from server)',
+            placeholder: 'e.g. gemma-4-26b-it'
+          }
+        ]
+      }
+    },
+    {
+      when: "{{local.provider === 'lmstudio'}}",
+      method: async (req, ondata) => {
+        const baseUrl = (req.input.base_url || 'http://127.0.0.1:1234/v1').trim()
+        await saveToConfigYaml({ base_url: baseUrl }, ondata)
+        if (req.input.model && req.input.model.trim()) {
+          await saveModel(req.input.model, ondata)
+        }
+      }
+    },
+
+    {
+      when: "{{local.provider === 'ollama'}}",
+      method: 'input',
+      params: {
+        title: 'Ollama - Local Model Server',
+        description: 'Hermes will auto-detect models from your running Ollama server.',
+        form: [
+          {
+            key: 'base_url',
+            type: 'text',
+            title: "Ollama API URL (current: {{local.existing._current_base_url || 'not set'}})",
+            placeholder: 'http://localhost:11434/v1',
+            default: "{{local.existing._current_base_url || 'http://localhost:11434/v1'}}"
+          },
+          {
+            key: 'model',
+            type: 'text',
+            title: 'Default Model ID (optional — leave blank to auto-detect from server)',
+            placeholder: 'e.g. llama3.2:latest, gemma3:27b'
+          }
+        ]
+      }
+    },
+    {
+      when: "{{local.provider === 'ollama'}}",
+      method: async (req, ondata) => {
+        const baseUrl = (req.input.base_url || 'http://localhost:11434/v1').trim()
+        await saveToConfigYaml({ base_url: baseUrl }, ondata)
+        if (req.input.model && req.input.model.trim()) {
+          await saveModel(req.input.model, ondata)
+        }
       }
     },
 
