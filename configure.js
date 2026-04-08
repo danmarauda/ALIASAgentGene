@@ -57,18 +57,41 @@ async function saveModel(modelId, ondata) {
 function parseSimpleYaml(text) {
   const result = {}
   let currentObj = null
+  let currentList = null
   for (const line of text.split(/\r?\n/)) {
     if (!line.trim() || line.trim().startsWith('#')) continue
     if (!line.startsWith(' ')) {
       const m = line.match(/^([\w-]+)\s*:\s*(.*)$/)
       if (m) {
         const val = m[2].replace(/^["']|["']$/g, '').trim()
-        if (val) { result[m[1]] = val; currentObj = null }
-        else { result[m[1]] = {}; currentObj = result[m[1]] }
+        if (val) {
+          result[m[1]] = val
+          currentObj = null
+          currentList = null
+        } else {
+          result[m[1]] = {}
+          currentObj = result[m[1]]
+          currentList = null
+        }
       }
     } else if (currentObj !== null) {
-      const m = line.match(/^\s+([\w-]+)\s*:\s*(.*)$/)
-      if (m) currentObj[m[1]] = m[2].replace(/^["']|["']$/g, '').trim()
+      const listItem = line.match(/^\s{4}-\s*(.+)$/)
+      if (listItem && Array.isArray(currentList)) {
+        currentList.push(listItem[1].replace(/^["']|["']$/g, '').trim())
+        continue
+      }
+
+      const m = line.match(/^\s{2}([\w-]+)\s*:\s*(.*)$/)
+      if (m) {
+        const nestedVal = m[2].replace(/^["']|["']$/g, '').trim()
+        if (nestedVal) {
+          currentObj[m[1]] = nestedVal
+          currentList = null
+        } else {
+          currentObj[m[1]] = []
+          currentList = currentObj[m[1]]
+        }
+      }
     }
   }
   return result
@@ -80,7 +103,16 @@ function serializeSimpleYaml(obj) {
     if (typeof v === 'object' && v !== null) {
       lines.push(`${k}:`)
       for (const [nk, nv] of Object.entries(v)) {
-        if (typeof nv === 'string' && nv) lines.push(`  ${nk}: "${nv}"`)
+        if (typeof nv === 'string' && nv) {
+          lines.push(`  ${nk}: "${nv}"`)
+        } else if (Array.isArray(nv) && nv.length > 0) {
+          lines.push(`  ${nk}:`)
+          for (const item of nv) {
+            if (typeof item === 'string' && item.trim()) {
+              lines.push(`    - ${item.trim()}`)
+            }
+          }
+        }
       }
     } else if (typeof v === 'string' && v) {
       lines.push(`${k}: "${v}"`)
@@ -89,7 +121,7 @@ function serializeSimpleYaml(obj) {
   return lines.join('\n') + '\n'
 }
 
-async function saveToConfigYaml(modelSection, ondata) {
+async function saveToConfigYaml(update, ondata) {
   const hermesDir = path.join(os.homedir(), '.hermes')
   const yamlPath = path.join(hermesDir, 'config.yaml')
   await fs.promises.mkdir(hermesDir, { recursive: true })
@@ -97,8 +129,18 @@ async function saveToConfigYaml(modelSection, ondata) {
   let existing = {}
   try { existing = parseSimpleYaml(await fs.promises.readFile(yamlPath, 'utf8')) } catch (_) {}
 
-  const prevModel = (typeof existing.model === 'object' && existing.model) ? existing.model : {}
-  existing.model = { ...prevModel, ...modelSection }
+  if (update && typeof update === 'object') {
+    if (update.model && typeof update.model === 'object') {
+      const prevModel = (typeof existing.model === 'object' && existing.model) ? existing.model : {}
+      existing.model = { ...prevModel, ...update.model }
+    }
+    if (update.platform_toolsets && typeof update.platform_toolsets === 'object') {
+      const prevToolsets = (typeof existing.platform_toolsets === 'object' && existing.platform_toolsets)
+        ? existing.platform_toolsets
+        : {}
+      existing.platform_toolsets = { ...prevToolsets, ...update.platform_toolsets }
+    }
+  }
 
   await fs.promises.writeFile(yamlPath, serializeSimpleYaml(existing), 'utf8')
   ondata({ raw: `Saved local model config to ${yamlPath}\r\n` })
@@ -334,6 +376,16 @@ module.exports = {
             default: "{{local.existing._current_base_url || 'http://127.0.0.1:1234/v1'}}"
           },
           {
+            key: 'compact_mode',
+            type: 'select',
+            title: 'Enable Compact Local Mode (recommended for 4k context models)',
+            items: [
+              { text: 'Yes - reduce tool prompt size', value: 'yes' },
+              { text: 'No - keep full toolset', value: 'no' }
+            ],
+            default: 'yes'
+          },
+          {
             key: 'model',
             type: 'text',
             title: 'Default Model ID (optional — leave blank to auto-detect from server)',
@@ -346,7 +398,19 @@ module.exports = {
       when: "{{local.provider === 'lmstudio'}}",
       method: async (req, ondata) => {
         const baseUrl = (req.input.base_url || 'http://127.0.0.1:1234/v1').trim()
-        await saveToConfigYaml({ base_url: baseUrl }, ondata)
+        const update = { model: { base_url: baseUrl } }
+        const compactEnabled = (req.input.compact_mode || 'yes') === 'yes'
+        if (compactEnabled) {
+          await saveToConfigYaml({
+            ...update,
+            platform_toolsets: {
+              cli: ['file', 'terminal', 'todo', 'clarify']
+            }
+          }, ondata)
+          ondata({ raw: 'Enabled compact local toolset profile for lower context usage\r\n' })
+        } else {
+          await saveToConfigYaml(update, ondata)
+        }
         if (req.input.model && req.input.model.trim()) {
           await saveModel(req.input.model, ondata)
         }
@@ -368,6 +432,16 @@ module.exports = {
             default: "{{local.existing._current_base_url || 'http://localhost:11434/v1'}}"
           },
           {
+            key: 'compact_mode',
+            type: 'select',
+            title: 'Enable Compact Local Mode (recommended for 4k context models)',
+            items: [
+              { text: 'Yes - reduce tool prompt size', value: 'yes' },
+              { text: 'No - keep full toolset', value: 'no' }
+            ],
+            default: 'yes'
+          },
+          {
             key: 'model',
             type: 'text',
             title: 'Default Model ID (optional — leave blank to auto-detect from server)',
@@ -380,7 +454,19 @@ module.exports = {
       when: "{{local.provider === 'ollama'}}",
       method: async (req, ondata) => {
         const baseUrl = (req.input.base_url || 'http://localhost:11434/v1').trim()
-        await saveToConfigYaml({ base_url: baseUrl }, ondata)
+        const update = { model: { base_url: baseUrl } }
+        const compactEnabled = (req.input.compact_mode || 'yes') === 'yes'
+        if (compactEnabled) {
+          await saveToConfigYaml({
+            ...update,
+            platform_toolsets: {
+              cli: ['file', 'terminal', 'todo', 'clarify']
+            }
+          }, ondata)
+          ondata({ raw: 'Enabled compact local toolset profile for lower context usage\r\n' })
+        } else {
+          await saveToConfigYaml(update, ondata)
+        }
         if (req.input.model && req.input.model.trim()) {
           await saveModel(req.input.model, ondata)
         }
