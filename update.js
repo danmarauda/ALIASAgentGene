@@ -29,6 +29,19 @@ module.exports = {
       }
     },
 
+    // Refresh Hermes agent's Node/browser dependencies too. The browser tools
+    // depend on the local agent-browser CLI and its managed Chromium install.
+    {
+      method: "shell.run",
+      params: {
+        path: "app/hermes-agent",
+        message: [
+          "npm install",
+          "npx agent-browser install"
+        ]
+      }
+    },
+
     // Refresh dependencies in case requirements changed upstream
     {
       method: "shell.run",

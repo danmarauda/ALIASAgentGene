@@ -30,6 +30,10 @@ app/
 └── env/            ← shared Python 3.11 venv
 ```
 
+The install also runs `npm install` inside `app/hermes-agent` and provisions
+Hermes' local browser runtime (`agent-browser install`) so the built-in
+browser automation tools work out of the box.
+
 Both repos are cloned from their canonical GitHub locations — nothing is forked
 or patched.
 
@@ -58,6 +62,9 @@ accumulates.
 | **Update** | Pulls latest code for the launcher + both upstream repos |
 | **Install** | Runs the full install (use after Reset, or first time) |
 | **Reset** | Removes `app/` and the venv; your Hermes memory at `~/.hermes` is **not** touched |
+
+If Hermes reports browser navigation errors on Windows, click **Update** once
+after pulling the latest launcher so the local browser CLI/runtime is refreshed.
 
 ---
 

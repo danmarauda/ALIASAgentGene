@@ -1,3 +1,7 @@
+const browserBinPathCommand = process.platform === "win32"
+  ? 'set "PATH=%CD%\\hermes-agent\\node_modules\\.bin;%PATH%"'
+  : 'export PATH="$(pwd)/hermes-agent/node_modules/.bin:$PATH"'
+
 module.exports = {
   daemon: true,
   run: [
@@ -25,7 +29,10 @@ module.exports = {
           HERMES_WEBUI_HOST: "127.0.0.1",
           TOKENIZERS_PARALLELISM: "false"
         },
-        message: ["python hermes-webui/server.py"],
+        message: [
+          browserBinPathCommand,
+          "python hermes-webui/server.py"
+        ],
         on: [{
           event: "/(http:\\/\\/[0-9.:]+)/",
           done: true
