@@ -29,6 +29,15 @@ module.exports = {
       }
     },
 
+    // Re-apply local routing compatibility patch after upstream updates.
+    // This is idempotent and only changes one guarded block when needed.
+    {
+      method: "shell.run",
+      params: {
+        message: "node patch_hermes_webui_local_routing.js"
+      }
+    },
+
     // Refresh Hermes agent's Node/browser dependencies too. The browser tools
     // depend on the local agent-browser CLI and its managed Chromium install.
     {

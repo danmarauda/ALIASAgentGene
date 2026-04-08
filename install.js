@@ -6,7 +6,8 @@ module.exports = {
       params: {
         message: [
           "git clone https://github.com/NousResearch/hermes-agent app/hermes-agent",
-          "git clone https://github.com/nesquena/hermes-webui app/hermes-webui"
+          "git clone https://github.com/nesquena/hermes-webui app/hermes-webui",
+          "node patch_hermes_webui_local_routing.js"
         ]
       }
     },
