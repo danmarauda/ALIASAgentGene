@@ -1,5 +1,5 @@
 const browserBinPathCommand = process.platform === "win32"
-  ? 'set "PATH=%CD%\\hermes-agent\\node_modules\\.bin;%PATH%"'
+  ? 'set "PATH=%CD%/hermes-agent/node_modules/.bin;%PATH%"'
   : 'export PATH="$(pwd)/hermes-agent/node_modules/.bin:$PATH"'
 
 module.exports = {
