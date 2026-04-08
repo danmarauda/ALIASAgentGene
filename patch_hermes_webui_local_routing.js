@@ -10,36 +10,28 @@ function applyLocalRoutingPatch(configPath) {
   const original = fs.readFileSync(configPath, 'utf8')
 
   // Already patched, nothing to do.
-  if (original.includes('PATCH: keep custom base_url routing for provider/model IDs')) {
+  if (original.includes('prefix in _PROVIDER_MODELS and prefix != config_provider and not config_base_url')) {
     console.log('[patch] Already applied: local routing guard present')
     return true
   }
 
-  const oldBlock = [
-    '        # If prefix does NOT match config provider, the user picked a cross-provider model',
-    '        # from the OpenRouter dropdown (e.g. config=anthropic but picked openai/gpt-5.4-mini).',
-    '        # In this case always route through openrouter with the full provider/model string.',
-    '        if prefix in _PROVIDER_MODELS and prefix != config_provider:',
-    "            return model_id, 'openrouter', None",
-  ].join('\n')
-
-  const newBlock = [
-    '        # If prefix does NOT match config provider, the user picked a cross-provider model',
-    '        # from the OpenRouter dropdown (e.g. config=anthropic but picked openai/gpt-5.4-mini).',
-    '        # In this case always route through openrouter with the full provider/model string.',
-    '        # PATCH: keep custom base_url routing for provider/model IDs when provider is not fixed.',
-    '        # This allows local endpoints (LM Studio/Ollama/custom) to use model IDs like',
-    '        # google/gemma-4-26b-a4b without being forced to OpenRouter.',
-    '        if prefix in _PROVIDER_MODELS and prefix != config_provider and not config_base_url:',
-    "            return model_id, 'openrouter', None",
-  ].join('\n')
-
-  if (!original.includes(oldBlock)) {
+  const targetRe = /(^\s*)if prefix in _PROVIDER_MODELS and prefix != config_provider:\s*\r?\n\1\s+return model_id, 'openrouter', None/m
+  const match = original.match(targetRe)
+  if (!match) {
     console.log('[patch] WARNING: target block not found, upstream changed. No patch applied.')
     return true
   }
 
-  const updated = original.replace(oldBlock, newBlock)
+  const indent = match[1] || '        '
+  const replacement = [
+    `${indent}# PATCH: keep custom base_url routing for provider/model IDs when provider is not fixed.`,
+    `${indent}# This allows local endpoints (LM Studio/Ollama/custom) to use model IDs like`,
+    `${indent}# google/gemma-4-26b-a4b without being forced to OpenRouter.`,
+    `${indent}if prefix in _PROVIDER_MODELS and prefix != config_provider and not config_base_url:`,
+    `${indent}    return model_id, 'openrouter', None`,
+  ].join('\n')
+
+  const updated = original.replace(targetRe, replacement)
   fs.writeFileSync(configPath, updated, 'utf8')
   console.log('[patch] Applied: local base_url no longer forced to OpenRouter routing')
   return true
